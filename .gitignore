@@ -21,3 +21,14 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
+
+**/caddy
+frankenphp
+frankenphp-worker.php
+
+**/caddy
+frankenphp
+frankenphp-worker.php
+
+# Frontend has its own git repo
+/frontend
