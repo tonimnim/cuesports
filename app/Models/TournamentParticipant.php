@@ -16,6 +16,8 @@ class TournamentParticipant extends Model
         'player_profile_id',
         'seed',
         'status',
+        'payment_status',
+        'payment_id',
         'current_stage_id',
         'final_position',
         'matches_played',
@@ -44,6 +46,7 @@ class TournamentParticipant extends Model
         'points' => 'integer',
         'group_number' => 'integer',
         'group_position' => 'integer',
+        'payment_id' => 'integer',
         'registered_at' => 'datetime',
         'eliminated_at' => 'datetime',
     ];
@@ -63,6 +66,11 @@ class TournamentParticipant extends Model
     public function currentStage(): BelongsTo
     {
         return $this->belongsTo(TournamentStage::class, 'current_stage_id');
+    }
+
+    public function payment(): BelongsTo
+    {
+        return $this->belongsTo(Payment::class);
     }
 
     // Scopes
@@ -220,5 +228,40 @@ class TournamentParticipant extends Model
     public function getGeographicUnit(): GeographicUnit
     {
         return $this->playerProfile->geographicUnit;
+    }
+
+    // Payment Status Methods
+
+    public function hasPaid(): bool
+    {
+        return $this->payment_status === 'paid';
+    }
+
+    public function isPendingPayment(): bool
+    {
+        return $this->payment_status === 'pending';
+    }
+
+    public function isPaymentWaived(): bool
+    {
+        return $this->payment_status === 'waived';
+    }
+
+    public function isPaymentRefunded(): bool
+    {
+        return $this->payment_status === 'refunded';
+    }
+
+    public function requiresPayment(): bool
+    {
+        return $this->tournament->requires_payment
+            && !$this->hasPaid()
+            && !$this->isPaymentWaived();
+    }
+
+    public function waivePayment(): void
+    {
+        $this->payment_status = 'waived';
+        $this->save();
     }
 }

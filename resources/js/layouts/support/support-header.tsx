@@ -37,7 +37,7 @@ export function SupportHeader({ onMenuClick }: SupportHeaderProps) {
     };
 
     const handleLogout = () => {
-        router.post('/logout');
+        router.post('/dashboard/logout');
     };
 
     return (
@@ -67,7 +67,7 @@ export function SupportHeader({ onMenuClick }: SupportHeaderProps) {
                                     src={user?.player_profile?.photo_url || undefined}
                                     alt={getDisplayName()}
                                 />
-                                <AvatarFallback className="bg-teal-100 text-teal-700">
+                                <AvatarFallback className="bg-[#004E86]/10 text-[#004E86]">
                                     {getInitials()}
                                 </AvatarFallback>
                             </Avatar>

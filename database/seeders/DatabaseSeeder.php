@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\GeographicUnit;
 use App\Models\User;
 use App\Models\PlayerProfile;
+use App\Models\OrganizerProfile;
 use App\Enums\GeographicLevel;
 use App\Enums\Gender;
 use Illuminate\Database\Seeder;
@@ -17,6 +18,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             GeographicUnitSeeder::class,
             AgeCategorySeeder::class,
+            MonitoredServiceSeeder::class,
         ]);
 
         // Get Kenya for the test user
@@ -36,7 +38,22 @@ class DatabaseSeeder extends Seeder
             'password' => bcrypt('password'),
             'country_id' => $kenya?->id,
             'is_super_admin' => true,
-            'is_support' => false,
+            'is_support' => true,
+            'is_player' => false,
+            'is_organizer' => false,
+            'is_active' => true,
+            'phone_verified_at' => now(),
+            'email_verified_at' => now(),
+        ]);
+
+        // Create Support User
+        $support = User::create([
+            'phone_number' => '+254700000003',
+            'email' => 'support@cuesports.africa',
+            'password' => bcrypt('password'),
+            'country_id' => $kenya?->id,
+            'is_super_admin' => false,
+            'is_support' => true,
             'is_player' => false,
             'is_organizer' => false,
             'is_active' => true,
@@ -72,5 +89,46 @@ class DatabaseSeeder extends Seeder
                 'rating' => 1000,
             ]);
         }
+
+        // Create Organizer (organizers are players first, then become organizers)
+        $organizer = User::create([
+            'phone_number' => '+254700000004',
+            'email' => 'organizer@cuesports.africa',
+            'password' => bcrypt('password'),
+            'country_id' => $kenya?->id,
+            'is_super_admin' => false,
+            'is_support' => false,
+            'is_player' => true, // Organizers are also players
+            'is_organizer' => true,
+            'is_active' => true,
+            'phone_verified_at' => now(),
+            'email_verified_at' => now(),
+        ]);
+
+        // Create player profile for organizer (they were a player before becoming organizer)
+        if ($community) {
+            PlayerProfile::create([
+                'user_id' => $organizer->id,
+                'first_name' => 'James',
+                'last_name' => 'Ochieng',
+                'nickname' => 'The Director',
+                'date_of_birth' => '1988-03-22',
+                'gender' => Gender::MALE,
+                'geographic_unit_id' => $community->id,
+                'rating' => 1150,
+            ]);
+        }
+
+        // Create organizer profile
+        OrganizerProfile::create([
+            'user_id' => $organizer->id,
+            'organization_name' => 'Kenya Pool Federation',
+            'description' => 'Official pool federation for Kenya, organizing national and regional tournaments.',
+            'is_active' => true,
+            'tournaments_hosted' => 0,
+        ]);
+
+        // Seed 250 test players from Kutus community
+        $this->call(TestPlayersSeeder::class);
     }
 }

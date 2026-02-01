@@ -21,12 +21,12 @@ class TournamentResource extends JsonResource
                 'value' => $this->type->value,
                 'label' => $this->type->label(),
                 'description' => $this->type->description(),
+                'rating_multiplier' => $this->getRatingMultiplier(),
             ],
             'format' => [
                 'value' => $this->format->value,
                 'label' => $this->format->label(),
                 'description' => $this->format->description(),
-                'has_group_stage' => $this->format->hasGroupStage(),
             ],
             'status' => [
                 'value' => $this->status->value,
@@ -34,6 +34,12 @@ class TournamentResource extends JsonResource
                 'can_register' => $this->status->canRegister(),
                 'can_play' => $this->status->canPlay(),
                 'is_finished' => $this->status->isFinished(),
+                'is_pending_review' => $this->status->isPendingReview(),
+            ],
+            'verification' => [
+                'is_verified' => $this->isVerified(),
+                'verified_at' => $this->verified_at?->toISOString(),
+                'rejection_reason' => $this->rejection_reason,
             ],
             'geographic_scope' => $this->whenLoaded('geographicScope', fn() => [
                 'id' => $this->geographicScope->id,
@@ -42,6 +48,10 @@ class TournamentResource extends JsonResource
                 'local_term' => $this->geographicScope->local_term,
                 'full_path' => $this->geographicScope->getFullPath(),
             ]),
+            'venue' => [
+                'name' => $this->venue_name,
+                'address' => $this->venue_address,
+            ],
             'organizer' => $this->whenLoaded('createdBy', fn() => [
                 'id' => $this->createdBy->id,
                 'name' => $this->createdBy->organizerProfile?->organization_name ?? $this->createdBy->playerProfile?->display_name,
@@ -51,22 +61,27 @@ class TournamentResource extends JsonResource
                 'registration_opens_at' => $this->registration_opens_at?->toISOString(),
                 'registration_closes_at' => $this->registration_closes_at?->toISOString(),
                 'starts_at' => $this->starts_at?->toISOString(),
+                'starts_at_date' => $this->starts_at?->toDateString(),
                 'ends_at' => $this->ends_at?->toISOString(),
                 'is_registration_open' => $this->isRegistrationOpen(),
+                'is_start_date_reached' => $this->isStartDateReached(),
             ],
+            'can_be_started' => $this->canBeStarted(),
             'settings' => [
                 'winners_count' => $this->winners_count,
                 'winners_per_level' => $this->winners_per_level,
-                'best_of' => $this->best_of,
-                'confirmation_hours' => $this->confirmation_hours,
+                'race_to' => $this->race_to ?? 3,
+                'finals_race_to' => $this->finals_race_to,
+                'match_deadline_hours' => 72, // Fixed: 3 days
+                'confirmation_hours' => 24,   // Fixed: 24 hours
             ],
-            'group_settings' => $this->when($this->format->hasGroupStage(), fn() => [
-                'min_players_for_groups' => $this->min_players_for_groups,
-                'players_per_group' => $this->players_per_group,
-                'advance_per_group' => $this->advance_per_group,
-                'should_use_groups' => $this->shouldUseGroups(),
-                'groups_count' => $this->calculateGroupsCount(),
-            ]),
+            'entry_fee' => [
+                'amount' => $this->entry_fee,
+                'currency' => $this->entry_fee_currency,
+                'formatted' => $this->formatted_entry_fee,
+                'requires_payment' => $this->requires_payment,
+                'is_free' => $this->isFree(),
+            ],
             'stats' => [
                 'participants_count' => $this->participants_count,
                 'matches_count' => $this->matches_count,

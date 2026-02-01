@@ -43,7 +43,7 @@ class PlayerRatingHistory extends Model
 
     public function match(): BelongsTo
     {
-        return $this->belongsTo(Match::class);
+        return $this->belongsTo(GameMatch::class);
     }
 
     public function tournament(): BelongsTo

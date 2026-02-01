@@ -34,6 +34,8 @@ class PlayerProfileResource extends JsonResource
                 'category' => $this->rating_category?->value,
                 'category_label' => $this->rating_category?->label(),
             ],
+            'country_rank' => $this->country_rank,
+            'country_player_count' => $this->when($this->country_id, fn() => $this->getCountryPlayerCount()),
             'stats' => [
                 'total_matches' => $this->total_matches,
                 'wins' => $this->wins,

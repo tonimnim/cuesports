@@ -54,6 +54,17 @@ class GeographicUnitSeeder extends Seeder
             ]
         );
 
+        // Kirinyaga County (MESO level)
+        $kirinyaga = GeographicUnit::updateOrCreate(
+            ['code' => 'KE-KRY', 'level' => GeographicLevel::MESO->value],
+            [
+                'name' => 'Kirinyaga',
+                'local_term' => 'County',
+                'parent_id' => $centralRegion->id,
+                'country_code' => 'KE',
+            ]
+        );
+
         // MICRO - Sample Constituencies
         $westlands = GeographicUnit::updateOrCreate(
             ['code' => 'KE-NBO-WL', 'level' => GeographicLevel::MICRO->value],
@@ -71,6 +82,17 @@ class GeographicUnitSeeder extends Seeder
                 'name' => 'Langata',
                 'local_term' => 'Constituency',
                 'parent_id' => $nairobi->id,
+                'country_code' => 'KE',
+            ]
+        );
+
+        // Mwea Constituency in Kirinyaga
+        $mwea = GeographicUnit::updateOrCreate(
+            ['code' => 'KE-KRY-MW', 'level' => GeographicLevel::MICRO->value],
+            [
+                'name' => 'Mwea',
+                'local_term' => 'Constituency',
+                'parent_id' => $kirinyaga->id,
                 'country_code' => 'KE',
             ]
         );
@@ -96,6 +118,17 @@ class GeographicUnitSeeder extends Seeder
             ]
         );
 
+        // Kutus Ward in Mwea
+        $kutusWard = GeographicUnit::updateOrCreate(
+            ['code' => 'KE-KRY-MW-KT', 'level' => GeographicLevel::NANO->value],
+            [
+                'name' => 'Kutus Ward',
+                'local_term' => 'Ward',
+                'parent_id' => $mwea->id,
+                'country_code' => 'KE',
+            ]
+        );
+
         // ATOMIC - Sample Communities
         GeographicUnit::updateOrCreate(
             ['code' => 'KE-NBO-WL-KG-C1', 'level' => GeographicLevel::ATOMIC->value],
@@ -113,6 +146,17 @@ class GeographicUnitSeeder extends Seeder
                 'name' => 'Karen Estate',
                 'local_term' => 'Community',
                 'parent_id' => $karenWard->id,
+                'country_code' => 'KE',
+            ]
+        );
+
+        // Kutus Community - main pool playing community in Kirinyaga
+        GeographicUnit::updateOrCreate(
+            ['code' => 'KE-KRY-MW-KT-C1', 'level' => GeographicLevel::ATOMIC->value],
+            [
+                'name' => 'Kutus',
+                'local_term' => 'Community',
+                'parent_id' => $kutusWard->id,
                 'country_code' => 'KE',
             ]
         );

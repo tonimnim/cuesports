@@ -11,8 +11,8 @@ class RegisterForTournamentRequest extends FormRequest
         $user = $this->user();
         $tournament = $this->route('tournament');
 
-        // Must be a player with a profile
-        if (!$user->is_player || !$user->playerProfile) {
+        // Must have a player profile (organizers can also play if they have a profile)
+        if (!$user->playerProfile) {
             return false;
         }
 
@@ -37,8 +37,8 @@ class RegisterForTournamentRequest extends FormRequest
 
         $message = 'You cannot register for this tournament.';
 
-        if (!$user->is_player || !$user->playerProfile) {
-            $message = 'You must have a player profile to register.';
+        if (!$user->playerProfile) {
+            $message = 'You must complete your player profile to register for tournaments.';
         } elseif (!$tournament->isRegistrationOpen()) {
             $message = 'Tournament registration is not open.';
         } elseif ($tournament->participants()->where('player_profile_id', $user->playerProfile->id)->exists()) {

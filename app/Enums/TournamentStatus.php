@@ -4,6 +4,7 @@ namespace App\Enums;
 
 enum TournamentStatus: string
 {
+    case PENDING_REVIEW = 'pending_review';
     case DRAFT = 'draft';
     case REGISTRATION = 'registration';
     case ACTIVE = 'active';
@@ -13,12 +14,18 @@ enum TournamentStatus: string
     public function label(): string
     {
         return match ($this) {
+            self::PENDING_REVIEW => 'Pending Review',
             self::DRAFT => 'Draft',
             self::REGISTRATION => 'Registration Open',
             self::ACTIVE => 'In Progress',
             self::COMPLETED => 'Completed',
             self::CANCELLED => 'Cancelled',
         };
+    }
+
+    public function isPendingReview(): bool
+    {
+        return $this === self::PENDING_REVIEW;
     }
 
     public function canRegister(): bool

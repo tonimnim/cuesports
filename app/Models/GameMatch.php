@@ -11,9 +11,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-class Match extends Model
+class GameMatch extends Model
 {
     use HasFactory;
+
+    protected $table = 'matches';
 
     protected $fillable = [
         'tournament_id',
@@ -42,6 +44,12 @@ class Match extends Model
         'scheduled_play_date',
         'played_at',
         'expires_at',
+        'deadline_at',
+        'confirmation_deadline_at',
+        'forfeit_type',
+        'no_show_reported_by',
+        'no_show_reported_at',
+        'dispute_claimed_score',
         'next_match_id',
         'next_match_slot',
         'group_number',
@@ -63,6 +71,10 @@ class Match extends Model
         'scheduled_play_date' => 'datetime',
         'played_at' => 'datetime',
         'expires_at' => 'datetime',
+        'deadline_at' => 'datetime',
+        'confirmation_deadline_at' => 'datetime',
+        'no_show_reported_at' => 'datetime',
+        'dispute_claimed_score' => 'array',
     ];
 
     // Relationships
@@ -97,6 +109,27 @@ class Match extends Model
         return $this->belongsTo(TournamentParticipant::class, 'loser_id');
     }
 
+    /**
+     * Get the loser_id, computing it if not stored but can be determined.
+     * This ensures position calculations work even if loser_id wasn't set.
+     */
+    public function getLoserIdAttribute($value): ?int
+    {
+        // If loser_id is already set, return it
+        if ($value !== null) {
+            return $value;
+        }
+
+        // If we have a winner_id and both players, we can compute the loser
+        if ($this->winner_id && $this->player1_id && $this->player2_id) {
+            return $this->winner_id === $this->player1_id
+                ? $this->player2_id
+                : $this->player1_id;
+        }
+
+        return null;
+    }
+
     public function submittedBy(): BelongsTo
     {
         return $this->belongsTo(TournamentParticipant::class, 'submitted_by');
@@ -119,12 +152,12 @@ class Match extends Model
 
     public function nextMatch(): BelongsTo
     {
-        return $this->belongsTo(Match::class, 'next_match_id');
+        return $this->belongsTo(GameMatch::class, 'next_match_id');
     }
 
     public function previousMatches(): HasOne
     {
-        return $this->hasOne(Match::class, 'next_match_id');
+        return $this->hasOne(GameMatch::class, 'next_match_id');
     }
 
     public function geographicUnit(): BelongsTo
@@ -132,9 +165,29 @@ class Match extends Model
         return $this->belongsTo(GeographicUnit::class);
     }
 
+    public function noShowReportedByParticipant(): BelongsTo
+    {
+        return $this->belongsTo(TournamentParticipant::class, 'no_show_reported_by');
+    }
+
     public function matchHistory(): HasMany
     {
         return $this->hasMany(PlayerMatchHistory::class);
+    }
+
+    public function evidence(): HasMany
+    {
+        return $this->hasMany(MatchEvidence::class, 'match_id');
+    }
+
+    public function scoreProofs(): HasMany
+    {
+        return $this->evidence()->where('evidence_type', MatchEvidence::TYPE_SCORE_PROOF);
+    }
+
+    public function disputeEvidence(): HasMany
+    {
+        return $this->evidence()->where('evidence_type', MatchEvidence::TYPE_DISPUTE_EVIDENCE);
     }
 
     public function matchHistoryForParticipant(TournamentParticipant $participant): ?PlayerMatchHistory
@@ -225,6 +278,11 @@ class Match extends Model
 
     public function isExpired(): bool
     {
+        return $this->deadline_at && now()->isAfter($this->deadline_at) && !$this->isCompleted();
+    }
+
+    public function hasExpiredStatus(): bool
+    {
         return $this->status === MatchStatus::EXPIRED;
     }
 
@@ -248,17 +306,29 @@ class Match extends Model
         return $this->expires_at->isPast();
     }
 
+    /**
+     * Check if a no-show has been reported for this match.
+     */
+    public function hasNoShowReport(): bool
+    {
+        return $this->no_show_reported_by !== null;
+    }
+
     public function isConfirmationExpired(): bool
     {
-        if (!$this->isPendingConfirmation() || !$this->submitted_at) {
-            return false;
-        }
+        return $this->confirmation_deadline_at && now()->isAfter($this->confirmation_deadline_at);
+    }
 
-        $confirmationDeadline = $this->submitted_at->addHours(
-            $this->tournament->confirmation_hours
-        );
+    public function setDeadlineFromTournament(): void
+    {
+        $hours = $this->tournament->getMatchDeadlineHours();
+        $this->deadline_at = now()->addHours($hours);
+    }
 
-        return $confirmationDeadline->isPast();
+    public function setConfirmationDeadline(): void
+    {
+        $hours = $this->tournament->getConfirmationHours();
+        $this->confirmation_deadline_at = now()->addHours($hours);
     }
 
     // Player Checks
@@ -313,20 +383,22 @@ class Match extends Model
 
     public function isValidScore(int $score1, int $score2): bool
     {
-        $bestOf = $this->tournament->best_of;
-        $winScore = (int) ceil($bestOf / 2);
+        // Determine the race_to value for this match
+        // Finals, semi-finals, and third-place matches may use finals_race_to
+        $isFinalRound = $this->isFinal() || $this->isThirdPlace() || $this->isSemiFinal();
+        $raceTo = $this->tournament->getRaceToForMatch($isFinalRound);
 
-        // One player must have exactly the winning score
-        if ($score1 !== $winScore && $score2 !== $winScore) {
+        // One player must have exactly the race_to score (the winner)
+        if ($score1 !== $raceTo && $score2 !== $raceTo) {
             return false;
         }
 
-        // The other player must have less than the winning score
-        if ($score1 === $winScore && $score2 >= $winScore) {
+        // The other player must have less than race_to (the loser)
+        if ($score1 === $raceTo && $score2 >= $raceTo) {
             return false;
         }
 
-        if ($score2 === $winScore && $score1 >= $winScore) {
+        if ($score2 === $raceTo && $score1 >= $raceTo) {
             return false;
         }
 
@@ -336,6 +408,11 @@ class Match extends Model
         }
 
         return true;
+    }
+
+    public function isSemiFinal(): bool
+    {
+        return $this->match_type === MatchType::SEMI_FINAL;
     }
 
     // Result Submission
@@ -414,8 +491,7 @@ class Match extends Model
         // Update participant stats
         $this->updateParticipantStats();
 
-        // Advance winner to next match
-        $this->advanceWinner();
+        // Note: Winner advancement is handled by BracketService in the controller
     }
 
     public function canDispute(TournamentParticipant $participant): bool
@@ -464,8 +540,7 @@ class Match extends Model
         // Update participant stats
         $this->updateParticipantStats();
 
-        // Advance winner to next match
-        $this->advanceWinner();
+        // Note: Winner advancement is handled by BracketService in the controller
     }
 
     // Internal Methods
@@ -654,6 +729,9 @@ class Match extends Model
         ?int $nextMatchId = null,
         ?string $nextMatchSlot = null
     ): self {
+        // Use tournament's race_to for the bye score
+        $raceTo = $tournament->race_to ?? 3;
+
         $match = new self([
             'tournament_id' => $tournament->id,
             'round_number' => $roundNumber,
@@ -661,7 +739,7 @@ class Match extends Model
             'match_type' => MatchType::BYE,
             'player1_id' => $player->id,
             'player2_id' => null,
-            'player1_score' => 2,  // Auto-win with best possible score
+            'player1_score' => $raceTo,  // Auto-win with race_to score
             'player2_score' => 0,
             'winner_id' => $player->id,
             'loser_id' => null,

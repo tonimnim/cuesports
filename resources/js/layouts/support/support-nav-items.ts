@@ -1,4 +1,4 @@
-import { LayoutDashboard, AlertTriangle, Users, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, AlertTriangle, UserCircle, Building2, History, Trophy, Users2, Wallet, Newspaper, type LucideIcon } from 'lucide-react';
 
 export interface NavItem {
     title: string;
@@ -14,13 +14,43 @@ export const supportNavItems: NavItem[] = [
         icon: LayoutDashboard,
     },
     {
+        title: 'Tournaments',
+        href: '/support/tournaments',
+        icon: Trophy,
+    },
+    {
         title: 'Disputes',
         href: '/support/disputes',
         icon: AlertTriangle,
     },
     {
-        title: 'Users',
-        href: '/support/users',
-        icon: Users,
+        title: 'Payouts',
+        href: '/support/payouts',
+        icon: Wallet,
+    },
+    {
+        title: 'Players',
+        href: '/support/players',
+        icon: UserCircle,
+    },
+    {
+        title: 'Organizers',
+        href: '/support/organizers',
+        icon: Building2,
+    },
+    {
+        title: 'Communities',
+        href: '/support/communities',
+        icon: Users2,
+    },
+    {
+        title: 'Activity Log',
+        href: '/support/activity',
+        icon: History,
+    },
+    {
+        title: 'Articles',
+        href: '/support/articles',
+        icon: Newspaper,
     },
 ];

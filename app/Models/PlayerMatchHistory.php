@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\GeographicLevel;
 use App\Enums\MatchType;
 use App\Enums\TournamentType;
+use App\Models\GameMatch as MatchModel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -62,7 +63,7 @@ class PlayerMatchHistory extends Model
 
     public function match(): BelongsTo
     {
-        return $this->belongsTo(Match::class);
+        return $this->belongsTo(MatchModel::class);
     }
 
     public function tournament(): BelongsTo
@@ -173,7 +174,7 @@ class PlayerMatchHistory extends Model
     // Note: Match uses TournamentParticipant, which links to PlayerProfile
 
     public static function createFromMatch(
-        Match $match,
+        MatchModel $match,
         TournamentParticipant $participant,
         int $ratingBefore,
         int $ratingAfter

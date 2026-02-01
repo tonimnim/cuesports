@@ -1,0 +1,46 @@
+# Dependencies
+vendor/
+node_modules/
+frontend/node_modules/
+frontend/.next/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+storage/logs/*
+
+# Cache
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+bootstrap/cache/*
+
+# Testing
+.phpunit.result.cache
+coverage/
+
+# Docker
+docker-compose.override.yml
+
+# Misc
+*.md
+!README.md
+Makefile

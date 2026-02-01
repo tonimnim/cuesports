@@ -19,6 +19,15 @@ class TournamentCollection extends ResourceCollection
     {
         return [
             'data' => $this->collection,
+        ];
+    }
+
+    /**
+     * Get additional data that should be returned with the resource array.
+     */
+    public function with(Request $request): array
+    {
+        return [
             'meta' => [
                 'current_page' => $this->currentPage(),
                 'from' => $this->firstItem(),
@@ -26,13 +35,17 @@ class TournamentCollection extends ResourceCollection
                 'per_page' => $this->perPage(),
                 'to' => $this->lastItem(),
                 'total' => $this->total(),
-            ],
-            'links' => [
-                'first' => $this->url(1),
-                'last' => $this->url($this->lastPage()),
-                'prev' => $this->previousPageUrl(),
-                'next' => $this->nextPageUrl(),
+                'links' => $this->linkCollection()->toArray(),
             ],
         ];
+    }
+
+    /**
+     * Customize the pagination information.
+     */
+    public function paginationInformation($request, $paginated, $default): array
+    {
+        // Return empty to prevent default pagination from being added
+        return [];
     }
 }

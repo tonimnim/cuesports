@@ -17,7 +17,7 @@ export type MatchType =
 
 export interface MatchPlayer {
     id: number;
-    seed: number | null;
+    seed?: number | null;
     player_profile: {
         id: number;
         first_name: string;
@@ -25,6 +25,11 @@ export interface MatchPlayer {
         nickname: string | null;
         photo_url: string | null;
         rating: number;
+        rating_category?: string;
+        total_matches?: number;
+        wins?: number;
+        losses?: number;
+        best_rating?: number;
     };
 }
 
@@ -61,4 +66,72 @@ export interface PaginatedDisputes {
     last_page: number;
     per_page: number;
     total: number;
+}
+
+// Evidence types for dispute resolution
+export interface MatchEvidence {
+    id: number;
+    file_url: string;
+    file_type: 'image' | 'video';
+    thumbnail_url: string | null;
+    description: string | null;
+    evidence_type: 'score_proof' | 'dispute_evidence' | 'other';
+    uploaded_at: string;
+    uploader: {
+        id: number;
+        name: string;
+    } | null;
+}
+
+// Player dispute statistics
+export interface PlayerDisputeStats {
+    disputes_filed: number;
+    disputes_against: number;
+    disputes_won: number;
+    disputes_lost: number;
+}
+
+// Head-to-head record
+export interface HeadToHead {
+    total: number;
+    player1_wins: number;
+    player2_wins: number;
+}
+
+// Match history entry
+export interface MatchHistoryEntry {
+    id: number;
+    opponent_name: string;
+    won: boolean;
+    score: string;
+    rating_before?: number;
+    rating_after?: number;
+    rating_change: number;
+    tournament_name: string;
+    match_type?: string;
+    round_name: string;
+    played_at: string | null;
+}
+
+// Dispute history entry (from user perspective)
+export interface DisputeHistoryEntry {
+    id: number;
+    tournament_name: string;
+    opponent_name: string;
+    was_disputer: boolean;
+    status: MatchStatus;
+    dispute_reason: string | null;
+    resolution_notes: string | null;
+    disputed_at: string | null;
+    resolved_at: string | null;
+}
+
+// Rating history entry
+export interface RatingHistoryEntry {
+    id: number;
+    old_rating: number;
+    new_rating: number;
+    change: number;
+    reason: string;
+    created_at: string;
 }

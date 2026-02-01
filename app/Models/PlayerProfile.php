@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\Gender;
 use App\Enums\RatingCategory;
 use App\Enums\GeographicLevel;
+use App\Models\GameMatch as MatchModel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -27,6 +28,8 @@ class PlayerProfile extends Model
         'date_of_birth',
         'gender',
         'geographic_unit_id',
+        'country_id',
+        'country_rank',
         'rating',
         'rating_category',
         'best_rating',
@@ -44,6 +47,8 @@ class PlayerProfile extends Model
         'date_of_birth' => 'date',
         'gender' => Gender::class,
         'rating_category' => RatingCategory::class,
+        'country_id' => 'integer',
+        'country_rank' => 'integer',
         'rating' => 'integer',
         'best_rating' => 'integer',
         'total_matches' => 'integer',
@@ -56,6 +61,16 @@ class PlayerProfile extends Model
         'tournaments_won' => 'integer',
     ];
 
+    protected static function booted(): void
+    {
+        // Automatically set country_id when geographic_unit_id changes
+        static::saving(function (PlayerProfile $profile) {
+            if ($profile->isDirty('geographic_unit_id') || !$profile->country_id) {
+                $profile->country_id = $profile->getCountry()?->id;
+            }
+        });
+    }
+
     // Relationships
 
     public function user(): BelongsTo
@@ -66,6 +81,11 @@ class PlayerProfile extends Model
     public function geographicUnit(): BelongsTo
     {
         return $this->belongsTo(GeographicUnit::class, 'geographic_unit_id');
+    }
+
+    public function country(): BelongsTo
+    {
+        return $this->belongsTo(GeographicUnit::class, 'country_id');
     }
 
     public function ratingHistory(): HasMany
@@ -169,7 +189,7 @@ class PlayerProfile extends Model
 
     // Rating Methods
 
-    public function updateRating(int $newRating, ?string $reason = null, ?Match $match = null): void
+    public function updateRating(int $newRating, ?string $reason = null, ?MatchModel $match = null): void
     {
         $oldRating = $this->rating;
         $this->rating = max(0, $newRating);
@@ -239,6 +259,18 @@ class PlayerProfile extends Model
     public function getLocationPath(): string
     {
         return $this->geographicUnit->getFullPath();
+    }
+
+    /**
+     * Get total number of players in the same country.
+     */
+    public function getCountryPlayerCount(): int
+    {
+        if (!$this->country_id) {
+            return 0;
+        }
+
+        return static::where('country_id', $this->country_id)->count();
     }
 
     // Age Category

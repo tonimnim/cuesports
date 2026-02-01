@@ -2,7 +2,32 @@
   "permissions": {
     "allow": [
       "Bash(cat:*)",
-      "Bash(npx shadcn@latest add:*)"
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(move pricing \"\\(marketing\\)\\\\pricing\")",
+      "Bash(move investors \"\\(marketing\\)\\\\investors\")",
+      "Bash(move legal \"\\(marketing\\)\\\\legal\")",
+      "Bash(move news \"\\(marketing\\)\\\\news\")",
+      "Bash(move players \"\\(marketing\\)\\\\players\")",
+      "Bash(powershell:*)",
+      "Bash(php artisan:*)",
+      "Bash(composer require:*)",
+      "Bash(timeout 30 sh:*)",
+      "Bash(docker compose:*)",
+      "Bash(curl:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker cp:*)",
+      "Bash(timeout:*)",
+      "Bash(docker logs:*)",
+      "Bash(findstr:*)",
+      "WebFetch(domain:www.premierleague.com)",
+      "Bash(npm install:*)",
+      "Bash(php -l:*)",
+      "Bash(php:*)",
+      "Bash(test:*)",
+      "Bash(npm run build:*)",
+      "Bash(docker restart:*)",
+      "Bash(winget install:*)"
     ]
   }
 }

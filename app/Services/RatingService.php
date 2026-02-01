@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Models\Match;
+use App\Models\GameMatch as MatchModel;
 use App\Models\PlayerProfile;
 use App\Models\PlayerRatingHistory;
 use App\Models\TournamentParticipant;
@@ -20,7 +20,7 @@ class RatingService
     /**
      * Calculate and apply rating changes after a match.
      */
-    public function processMatchResult(Match $match): void
+    public function processMatchResult(MatchModel $match): void
     {
         if (!$match->isCompleted() || $match->isBye()) {
             return;
@@ -39,13 +39,18 @@ class RatingService
         $winnerOldRating = $winnerProfile->rating;
         $loserOldRating = $loserProfile->rating;
 
+        // Get tournament rating multiplier (based on type and geographic level)
+        $tournament = $match->tournament;
+        $ratingMultiplier = $tournament ? $tournament->getRatingMultiplier() : 1.0;
+
         // Calculate new ratings
         $ratingChanges = $this->calculateRatingChange(
             $winnerProfile,
             $loserProfile,
             $match->player1_score,
             $match->player2_score,
-            $match->winner_id === $match->player1_id
+            $match->winner_id === $match->player1_id,
+            $ratingMultiplier
         );
 
         // Apply rating changes
@@ -78,17 +83,19 @@ class RatingService
      *
      * @param PlayerProfile $winner
      * @param PlayerProfile $loser
-     * @param int $winnerFrames
-     * @param int $loserFrames
+     * @param int $player1Score
+     * @param int $player2Score
      * @param bool $winnerIsPlayer1
-     * @return array{winner_change: int, loser_change: int, winner_new_rating: int, loser_new_rating: int}
+     * @param float $tournamentMultiplier Tournament-level multiplier (1.0 for regular, up to 1.75 for continental special)
+     * @return array{winner_change: int, loser_change: int, winner_new_rating: int, loser_new_rating: int, multiplier: float}
      */
     public function calculateRatingChange(
         PlayerProfile $winner,
         PlayerProfile $loser,
         int $player1Score,
         int $player2Score,
-        bool $winnerIsPlayer1
+        bool $winnerIsPlayer1,
+        float $tournamentMultiplier = 1.0
     ): array {
         $winnerRating = $winner->rating;
         $loserRating = $loser->rating;
@@ -107,11 +114,15 @@ class RatingService
             $winnerIsPlayer1 ? $player2Score : $player1Score
         );
 
-        // Calculate rating changes
+        // Calculate base rating changes
         // Winner: actual score = 1 (win)
         // Loser: actual score = 0 (loss)
-        $winnerChange = (int) round($winnerK * $marginMultiplier * (1 - $winnerExpected));
-        $loserChange = (int) round($loserK * $marginMultiplier * (0 - $loserExpected));
+        $baseWinnerChange = $winnerK * $marginMultiplier * (1 - $winnerExpected);
+        $baseLoserChange = $loserK * $marginMultiplier * (0 - $loserExpected);
+
+        // Apply tournament multiplier (for Special tournaments at higher geographic levels)
+        $winnerChange = (int) round($baseWinnerChange * $tournamentMultiplier);
+        $loserChange = (int) round($baseLoserChange * $tournamentMultiplier);
 
         // Ensure minimum change of 1 for meaningful matches
         if ($winnerChange === 0) {
@@ -129,6 +140,7 @@ class RatingService
             'loser_change' => $loserChange,
             'winner_new_rating' => $winnerNewRating,
             'loser_new_rating' => $loserNewRating,
+            'multiplier' => $tournamentMultiplier,
         ];
     }
 
@@ -177,7 +189,7 @@ class RatingService
      * Update the match history records with the correct rating changes.
      */
     protected function updateMatchHistoryRatings(
-        Match $match,
+        MatchModel $match,
         TournamentParticipant $winner,
         int $winnerOldRating,
         int $winnerNewRating,
@@ -207,7 +219,8 @@ class RatingService
         PlayerProfile $player1,
         PlayerProfile $player2,
         int $player1Score,
-        int $player2Score
+        int $player2Score,
+        float $tournamentMultiplier = 1.0
     ): array {
         $player1Wins = $player1Score > $player2Score;
         $winner = $player1Wins ? $player1 : $player2;
@@ -218,7 +231,8 @@ class RatingService
             $loser,
             $player1Score,
             $player2Score,
-            $player1Wins
+            $player1Wins,
+            $tournamentMultiplier
         );
 
         return [
@@ -232,6 +246,7 @@ class RatingService
                 'new_rating' => $player1Wins ? $changes['loser_new_rating'] : $changes['winner_new_rating'],
                 'change' => $player1Wins ? $changes['loser_change'] : $changes['winner_change'],
             ],
+            'multiplier' => $tournamentMultiplier,
         ];
     }
 

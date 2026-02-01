@@ -2,13 +2,16 @@
 
 namespace App\Jobs;
 
+use App\Enums\ForfeitType;
 use App\Enums\MatchStatus;
-use App\Models\Match;
+use App\Enums\MatchType;
+use App\Models\GameMatch;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class ExpireScheduledMatchesJob implements ShouldQueue
@@ -30,35 +33,83 @@ class ExpireScheduledMatchesJob implements ShouldQueue
      */
     public function handle(): void
     {
-        $expiredMatches = Match::scheduled()
-            ->where('expires_at', '<=', now())
-            ->with(['player1.playerProfile', 'player2.playerProfile', 'tournament'])
+        $expiredMatches = GameMatch::where('status', MatchStatus::SCHEDULED)
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '<', now())
+            ->where('match_type', '!=', MatchType::BYE)
+            ->with(['tournament', 'player1.playerProfile', 'player2.playerProfile'])
             ->get();
-
-        $count = 0;
 
         foreach ($expiredMatches as $match) {
             try {
-                $match->expire();
-                $count++;
+                DB::transaction(function () use ($match) {
+                    $match->status = MatchStatus::EXPIRED;
+                    $match->forfeit_type = ForfeitType::DOUBLE_FORFEIT;
+                    $match->save();
 
-                Log::info('Match expired', [
-                    'match_id' => $match->id,
-                    'tournament_id' => $match->tournament_id,
-                    'player1' => $match->player1?->playerProfile?->display_name,
-                    'player2' => $match->player2?->playerProfile?->display_name,
-                    'match_type' => $match->match_type->value,
-                ]);
+                    // Check if tournament has double_forfeit_on_expiry setting
+                    // Default to true if not set
+                    $doubleForfeitOnExpiry = $match->tournament->double_forfeit_on_expiry ?? true;
+
+                    if ($doubleForfeitOnExpiry) {
+                        // Eliminate both players
+                        $this->eliminateBothPlayers($match);
+                    }
+
+                    // Handle next match - mark it as needing attention or give bye
+                    $this->handleNextMatch($match);
+
+                    Log::info("Match {$match->id} expired - double forfeit", [
+                        'tournament_id' => $match->tournament_id,
+                        'player1' => $match->player1?->playerProfile?->display_name,
+                        'player2' => $match->player2?->playerProfile?->display_name,
+                        'double_forfeit_elimination' => $doubleForfeitOnExpiry,
+                    ]);
+                });
             } catch (\Exception $e) {
                 Log::error('Failed to expire match', [
                     'match_id' => $match->id,
                     'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
                 ]);
             }
         }
+    }
 
-        if ($count > 0) {
-            Log::info("Expired {$count} scheduled matches");
+    /**
+     * Eliminate both players from the tournament due to double forfeit.
+     */
+    protected function eliminateBothPlayers(GameMatch $match): void
+    {
+        // Calculate position based on round
+        $remainingInRound = GameMatch::where('tournament_id', $match->tournament_id)
+            ->where('round_number', $match->round_number)
+            ->whereIn('status', [MatchStatus::SCHEDULED, MatchStatus::PENDING_CONFIRMATION])
+            ->count();
+
+        $totalParticipants = $match->tournament->participants()->count();
+        $position = $totalParticipants - $remainingInRound + 1;
+
+        if ($match->player1) {
+            $match->player1->eliminate($position);
+        }
+        if ($match->player2) {
+            $match->player2->eliminate($position);
+        }
+    }
+
+    /**
+     * Handle the next match when a double forfeit occurs.
+     */
+    protected function handleNextMatch(GameMatch $match): void
+    {
+        if ($match->next_match_id) {
+            // The next match will have an empty slot due to double forfeit
+            // This could become a bye or require organizer intervention
+            Log::warning("Match {$match->next_match_id} has empty slot due to double forfeit", [
+                'expired_match_id' => $match->id,
+                'tournament_id' => $match->tournament_id,
+            ]);
         }
     }
 }

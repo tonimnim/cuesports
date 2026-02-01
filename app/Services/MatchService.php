@@ -4,7 +4,11 @@ namespace App\Services;
 
 use App\Enums\MatchStatus;
 use App\Enums\MatchType;
-use App\Models\Match;
+use App\Events\MatchDisputed;
+use App\Events\MatchResolved;
+use App\Events\MatchResultConfirmed;
+use App\Events\MatchResultSubmitted;
+use App\Models\GameMatch as MatchModel;
 use App\Models\Tournament;
 use App\Models\TournamentParticipant;
 use App\Models\User;
@@ -23,22 +27,27 @@ class MatchService
      * @throws \InvalidArgumentException
      */
     public function submitResult(
-        Match $match,
+        MatchModel $match,
         TournamentParticipant $submitter,
         int $submitterScore,
         int $opponentScore
-    ): Match {
+    ): MatchModel {
         if (!$match->canSubmitResult($submitter)) {
             throw new \InvalidArgumentException('Cannot submit result for this match.');
         }
 
         if (!$match->isValidScore($submitterScore, $opponentScore)) {
-            throw new \InvalidArgumentException('Invalid score. Score must be valid for best of ' . $match->tournament->best_of);
+            $raceTo = $match->tournament->race_to ?? 3;
+            throw new \InvalidArgumentException("Invalid score. Winner must have exactly {$raceTo} frames (race to {$raceTo}).");
         }
 
         return DB::transaction(function () use ($match, $submitter, $submitterScore, $opponentScore) {
             $match->submitResult($submitter, $submitterScore, $opponentScore);
-            return $match->fresh();
+            $match = $match->fresh();
+
+            event(new MatchResultSubmitted($match));
+
+            return $match;
         });
     }
 
@@ -48,9 +57,9 @@ class MatchService
      * @throws \InvalidArgumentException
      */
     public function confirmResult(
-        Match $match,
+        MatchModel $match,
         TournamentParticipant $confirmer
-    ): Match {
+    ): MatchModel {
         if (!$match->canConfirm($confirmer)) {
             throw new \InvalidArgumentException('Cannot confirm this match result.');
         }
@@ -61,7 +70,11 @@ class MatchService
             // Process rating changes
             $this->ratingService->processMatchResult($match);
 
-            return $match->fresh();
+            $match = $match->fresh();
+
+            event(new MatchResultConfirmed($match));
+
+            return $match;
         });
     }
 
@@ -71,10 +84,10 @@ class MatchService
      * @throws \InvalidArgumentException
      */
     public function disputeResult(
-        Match $match,
+        MatchModel $match,
         TournamentParticipant $disputer,
         string $reason
-    ): Match {
+    ): MatchModel {
         if (!$match->canDispute($disputer)) {
             throw new \InvalidArgumentException('Cannot dispute this match result.');
         }
@@ -85,7 +98,11 @@ class MatchService
 
         return DB::transaction(function () use ($match, $disputer, $reason) {
             $match->dispute($disputer, $reason);
-            return $match->fresh();
+            $match = $match->fresh();
+
+            event(new MatchDisputed($match));
+
+            return $match;
         });
     }
 
@@ -95,12 +112,12 @@ class MatchService
      * @throws \InvalidArgumentException
      */
     public function resolveDispute(
-        Match $match,
+        MatchModel $match,
         User $resolver,
         int $player1Score,
         int $player2Score,
         ?string $notes = null
-    ): Match {
+    ): MatchModel {
         if (!$match->isDisputed()) {
             throw new \InvalidArgumentException('Match is not disputed.');
         }
@@ -110,7 +127,8 @@ class MatchService
         }
 
         if (!$match->isValidScore($player1Score, $player2Score)) {
-            throw new \InvalidArgumentException('Invalid score.');
+            $raceTo = $match->tournament->race_to ?? 3;
+            throw new \InvalidArgumentException("Invalid score. Winner must have exactly {$raceTo} frames (race to {$raceTo}).");
         }
 
         return DB::transaction(function () use ($match, $resolver, $player1Score, $player2Score, $notes) {
@@ -119,7 +137,11 @@ class MatchService
             // Process rating changes
             $this->ratingService->processMatchResult($match);
 
-            return $match->fresh();
+            $match = $match->fresh();
+
+            event(new MatchResolved($match));
+
+            return $match;
         });
     }
 
@@ -128,12 +150,12 @@ class MatchService
      */
     public function getPendingMatchesForPlayer(TournamentParticipant $participant): Collection
     {
-        return Match::forPlayer($participant->id)
+        return MatchModel::forPlayer($participant->id)
             ->where(function ($query) {
                 $query->scheduled()
                     ->orWhere->pendingConfirmation();
             })
-            ->with(['player1.playerProfile', 'player2.playerProfile', 'tournament'])
+            ->with(['player1.playerProfile.user', 'player2.playerProfile.user', 'tournament'])
             ->orderBy('expires_at')
             ->get();
     }
@@ -143,7 +165,7 @@ class MatchService
      */
     public function getMatchesRequiringAction(TournamentParticipant $participant): Collection
     {
-        return Match::forPlayer($participant->id)
+        return MatchModel::forPlayer($participant->id)
             ->where(function ($query) use ($participant) {
                 // Scheduled matches (need to submit result)
                 $query->scheduled()
@@ -153,7 +175,7 @@ class MatchService
                             ->where('submitted_by', '!=', $participant->id);
                     });
             })
-            ->with(['player1.playerProfile', 'player2.playerProfile', 'tournament'])
+            ->with(['player1.playerProfile.user', 'player2.playerProfile.user', 'tournament'])
             ->orderBy('expires_at')
             ->get();
     }
@@ -163,7 +185,7 @@ class MatchService
      */
     public function getDisputedMatches(): Collection
     {
-        return Match::disputed()
+        return MatchModel::disputed()
             ->with([
                 'player1.playerProfile',
                 'player2.playerProfile',
@@ -180,7 +202,7 @@ class MatchService
      */
     public function getTournamentMatchHistory(Tournament $tournament): Collection
     {
-        return Match::where('tournament_id', $tournament->id)
+        return MatchModel::where('tournament_id', $tournament->id)
             ->completed()
             ->with(['player1.playerProfile', 'player2.playerProfile', 'winner.playerProfile'])
             ->orderBy('played_at', 'desc')
@@ -199,12 +221,12 @@ class MatchService
         ?string $nextMatchSlot = null,
         ?int $stageId = null,
         ?int $bracketPosition = null
-    ): Match {
+    ): MatchModel {
         return DB::transaction(function () use (
             $tournament, $player, $roundNumber, $roundName,
             $nextMatchId, $nextMatchSlot, $stageId, $bracketPosition
         ) {
-            $match = Match::createByeMatch(
+            $match = MatchModel::createByeMatch(
                 $tournament,
                 $player,
                 $roundNumber,
@@ -232,7 +254,7 @@ class MatchService
      */
     public function getTournamentBracket(Tournament $tournament): array
     {
-        $matches = Match::where('tournament_id', $tournament->id)
+        $matches = MatchModel::where('tournament_id', $tournament->id)
             ->with(['player1.playerProfile', 'player2.playerProfile', 'winner.playerProfile'])
             ->orderBy('round_number')
             ->orderBy('bracket_position')
@@ -271,7 +293,7 @@ class MatchService
      */
     public function getTournamentMatchStats(Tournament $tournament): array
     {
-        $matches = Match::where('tournament_id', $tournament->id)->get();
+        $matches = MatchModel::where('tournament_id', $tournament->id)->get();
 
         return [
             'total' => $matches->count(),

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
 class OrganizerProfile extends Model
@@ -21,11 +22,19 @@ class OrganizerProfile extends Model
         'api_secret',
         'is_active',
         'tournaments_hosted',
+        'available_balance',
+        'pending_balance',
+        'total_earnings',
+        'total_withdrawn',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
         'tournaments_hosted' => 'integer',
+        'available_balance' => 'integer',
+        'pending_balance' => 'integer',
+        'total_earnings' => 'integer',
+        'total_withdrawn' => 'integer',
         'api_key_last_used_at' => 'datetime',
     ];
 
@@ -43,6 +52,26 @@ class OrganizerProfile extends Model
     public function tournaments(): HasMany
     {
         return $this->hasMany(Tournament::class, 'organizer_id');
+    }
+
+    public function payouts(): HasMany
+    {
+        return $this->hasMany(OrganizerPayout::class);
+    }
+
+    public function wallet(): HasOne
+    {
+        return $this->hasOne(OrganizerWallet::class);
+    }
+
+    public function payoutMethods(): HasMany
+    {
+        return $this->hasMany(PayoutMethod::class);
+    }
+
+    public function payoutRequests(): HasMany
+    {
+        return $this->hasMany(PayoutRequest::class);
     }
 
     // Scopes
@@ -118,5 +147,21 @@ class OrganizerProfile extends Model
     public function getContactPhone(): string
     {
         return $this->user->phone_number;
+    }
+
+    public function getOrCreateWallet(): OrganizerWallet
+    {
+        return $this->wallet ?? $this->wallet()->create([
+            'balance' => 0,
+            'pending_balance' => 0,
+            'total_earned' => 0,
+            'total_withdrawn' => 0,
+            'currency' => 'KES',
+        ]);
+    }
+
+    public function defaultPayoutMethod(): ?PayoutMethod
+    {
+        return $this->payoutMethods()->where('is_default', true)->first();
     }
 }

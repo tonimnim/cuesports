@@ -59,6 +59,30 @@ class ProfileController extends Controller
     }
 
     /**
+     * Get the authenticated user's profile settings (for editing).
+     */
+    public function settings(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $user->load(['country', 'playerProfile.geographicUnit', 'organizerProfile']);
+
+        // Get available locations for the dropdown
+        $locations = \App\Models\GeographicUnit::whereIn('level', ['city', 'region'])
+            ->orderBy('name')
+            ->get()
+            ->map(fn($loc) => [
+                'id' => $loc->id,
+                'name' => $loc->name,
+                'full_path' => $loc->getFullPath(),
+            ]);
+
+        return response()->json([
+            'user' => new UserResource($user),
+            'locations' => $locations,
+        ]);
+    }
+
+    /**
      * Update the authenticated user's player profile.
      */
     public function update(UpdatePlayerProfileRequest $request): JsonResponse
@@ -230,8 +254,10 @@ class ProfileController extends Controller
             ->limit($limit)
             ->get();
 
+        $profile = $user->playerProfile;
+
         return response()->json([
-            'matches' => $matches->map(fn($match) => [
+            'data' => $matches->map(fn($match) => [
                 'id' => $match->id,
                 'tournament' => [
                     'id' => $match->tournament_id,
@@ -241,29 +267,106 @@ class ProfileController extends Controller
                 'opponent' => [
                     'id' => $match->opponent_profile_id,
                     'name' => $match->opponent_name,
+                    'photo_url' => $match->opponentProfile?->photo_url,
                     'rating_at_time' => $match->opponent_rating_at_time,
                 ],
-                'result' => $match->result,
+                'result' => $match->won ? 'win' : 'loss',
                 'won' => $match->won,
                 'score' => $match->score,
-                'match_type' => $match->match_type,
-                'round' => [
-                    'number' => $match->round_number,
-                    'name' => $match->round_name,
-                ],
-                'rating' => [
-                    'before' => $match->rating_before,
-                    'after' => $match->rating_after,
-                    'change' => $match->rating_change,
-                    'formatted_change' => $match->rating_change_formatted,
-                ],
+                'stage' => $match->round_name,
+                'rating_change' => $match->rating_change,
                 'played_at' => $match->played_at->toISOString(),
             ]),
-            'pagination' => [
-                'offset' => $offset,
-                'limit' => $limit,
-                'has_more' => $matches->count() === $limit,
+            'stats' => [
+                'total_matches' => $profile->total_matches,
+                'wins' => $profile->wins,
+                'losses' => $profile->total_matches - $profile->wins,
+                'win_rate' => $profile->total_matches > 0
+                    ? round(($profile->wins / $profile->total_matches) * 100)
+                    : 0,
             ],
+            'meta' => [
+                'current_page' => (int) floor($offset / $limit) + 1,
+                'per_page' => $limit,
+                'total' => $profile->total_matches,
+                'last_page' => (int) ceil($profile->total_matches / $limit),
+            ],
+        ]);
+    }
+
+    /**
+     * Get the user's tournament history.
+     */
+    public function tournamentHistory(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if (!$user->playerProfile) {
+            return response()->json([
+                'message' => 'Player profile not found',
+            ], 404);
+        }
+
+        $perPage = min($request->input('per_page', 15), 50);
+        $filter = $request->input('filter'); // all, won, active
+
+        $query = $user->playerProfile->tournamentParticipations()
+            ->with(['tournament.organizer', 'tournament.geographicScope'])
+            ->orderBy('created_at', 'desc');
+
+        // Apply filters
+        if ($filter === 'won') {
+            $query->where('final_position', 1);
+        } elseif ($filter === 'active') {
+            $query->whereHas('tournament', function ($q) {
+                $q->where('status', 'active');
+            });
+        }
+
+        $participations = $query->paginate($perPage);
+
+        // Calculate stats
+        $allParticipations = $user->playerProfile->tournamentParticipations()->get();
+        $stats = [
+            'total_played' => $allParticipations->count(),
+            'total_won' => $allParticipations->where('final_position', 1)->count(),
+            'best_placement' => $allParticipations->whereNotNull('final_position')->min('final_position'),
+        ];
+
+        return response()->json([
+            'data' => $participations->map(function ($p) {
+                $tournament = $p->tournament;
+                return [
+                    'id' => $tournament->id,
+                    'name' => $tournament->name,
+                    'status' => [
+                        'value' => $tournament->status->value,
+                        'label' => $tournament->status->label(),
+                    ],
+                    'venue' => [
+                        'name' => $tournament->venue_name,
+                        'address' => $tournament->venue_address,
+                    ],
+                    'dates' => [
+                        'starts_at' => $tournament->starts_at?->toISOString(),
+                        'ends_at' => $tournament->ends_at?->toISOString(),
+                    ],
+                    'participant_count' => $tournament->participants()->count(),
+                    'my_result' => [
+                        'placement' => $p->final_position,
+                        'matches_played' => $p->matches_played ?? 0,
+                        'matches_won' => $p->matches_won ?? 0,
+                        'rating_change' => $p->rating_change ?? 0,
+                    ],
+                    'format' => $tournament->format->value,
+                ];
+            }),
+            'meta' => [
+                'current_page' => $participations->currentPage(),
+                'last_page' => $participations->lastPage(),
+                'total' => $participations->total(),
+            ],
+            'stats' => $stats,
         ]);
     }
 

@@ -1,66 +1,98 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Cue Sports Africa
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A tournament management platform for competitive cue sports (pool, snooker, billiards) in Africa.
 
-## About Laravel
+## Features
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- **Player Management** - Registration, profiles, and Elo-based rating system
+- **Tournament System** - Create and manage tournaments with bracket generation
+- **Match Tracking** - Result submission, confirmation, and dispute resolution
+- **Organizer Tools** - Host tournaments, view analytics, manage earnings and payouts
+- **Payments** - Entry fees and organizer subscriptions via Paystack
+- **Geographic Hierarchy** - Regional tournaments at country, region, and city levels
+- **Admin Dashboard** - Tournament approval, dispute resolution, user management
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Tech Stack
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+**Backend**
+- Laravel 12 (PHP 8.3)
+- Laravel Passport (OAuth2 authentication)
+- Laravel Horizon (queue management)
+- Laravel Pulse (monitoring)
+- MySQL/PostgreSQL
 
-## Learning Laravel
+**Frontend**
+- React 19 with TypeScript
+- Inertia.js
+- Tailwind CSS 4
+- Radix UI components
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+**Services**
+- Cloudinary (image uploads)
+- Paystack (payments)
+- Pusher (real-time updates)
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+## Requirements
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+- PHP 8.2+
+- Node.js 18+
+- Composer
+- MySQL or PostgreSQL
 
-## Laravel Sponsors
+## Installation
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+```bash
+# Clone the repository
+git clone https://github.com/tonimnim/cuesports.git
+cd cuesports
 
-### Premium Partners
+# Install PHP dependencies
+composer install
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[WebReinvent](https://webreinvent.com/)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Jump24](https://jump24.co.uk)**
-- **[Redberry](https://redberry.international/laravel/)**
-- **[Active Logic](https://activelogic.com)**
-- **[byte5](https://byte5.de)**
-- **[OP.GG](https://op.gg)**
+# Install Node dependencies
+npm install
 
-## Contributing
+# Copy environment file
+cp .env.example .env
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+# Generate application key
+php artisan key:generate
 
-## Code of Conduct
+# Run migrations
+php artisan migrate
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+# Seed the database
+php artisan db:seed
 
-## Security Vulnerabilities
+# Start development server
+composer dev
+```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## Environment Variables
+
+Configure the following in your `.env` file:
+
+- `DB_*` - Database connection
+- `MAIL_*` - Email configuration for OTP verification
+- `CLOUDINARY_*` - Image upload service
+- `PAYSTACK_*` - Payment processing
+- `PUSHER_*` - Real-time notifications
+
+## API Documentation
+
+The API is organized into the following modules:
+
+| Endpoint | Description |
+|----------|-------------|
+| `/api/auth/*` | Authentication (register, login, password reset) |
+| `/api/profile/*` | Player profile management |
+| `/api/organizer/*` | Organizer registration and management |
+| `/api/tournaments/*` | Tournament CRUD and registration |
+| `/api/matches/*` | Match results and disputes |
+| `/api/payments/*` | Payment processing |
+| `/api/subscriptions/*` | Organizer subscription plans |
+| `/api/locations/*` | Geographic units (countries, regions, cities) |
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Proprietary - All rights reserved.

@@ -117,4 +117,17 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Remember Me Cookie Lifetime
+    |--------------------------------------------------------------------------
+    |
+    | Here you may define the lifetime in minutes of the remember me cookie.
+    | By default it's set to 5 years (2628000 minutes) to keep users
+    | logged in essentially forever until they explicitly log out.
+    |
+    */
+
+    'remember' => env('AUTH_REMEMBER_LIFETIME', 2628000),
+
 ];

@@ -18,7 +18,8 @@ class EnsureUserHasRole
         $user = $request->user();
 
         if (!$user) {
-            return redirect()->route('login');
+            // Redirect to the dashboard login page
+            return redirect('/dashboard/login');
         }
 
         $hasAccess = match ($role) {

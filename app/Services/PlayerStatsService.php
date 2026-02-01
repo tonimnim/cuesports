@@ -10,6 +10,7 @@ use App\Models\PlayerMatchHistory;
 use App\Models\PlayerProfile;
 use App\Models\PlayerRatingHistory;
 use Carbon\Carbon;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -374,5 +375,61 @@ class PlayerStatsService
             'tournaments_played' => $tournamentStats->tournaments_played ?? 0,
             'tournaments_won' => $tournamentStats->tournaments_won ?? 0,
         ]);
+    }
+
+    /**
+     * Get paginated player rankings with filters.
+     */
+    public function getPaginatedRankings(
+        ?int $countryId = null,
+        ?int $regionId = null,
+        ?string $category = null,
+        string $sortBy = 'rating',
+        int $perPage = 25
+    ): LengthAwarePaginator {
+        $query = PlayerProfile::query()
+            ->with(['geographicUnit', 'country']);
+
+        // Filter by country
+        if ($countryId) {
+            $query->where('country_id', $countryId);
+        }
+
+        // Filter by region (cascading - includes all descendants)
+        if ($regionId) {
+            $region = GeographicUnit::find($regionId);
+            if ($region) {
+                $unitIds = $this->getDescendantUnitIds($region);
+                $query->whereIn('geographic_unit_id', $unitIds);
+            }
+        }
+
+        // Filter by rating category
+        if ($category) {
+            $categoryEnum = RatingCategory::tryFrom($category);
+            if ($categoryEnum) {
+                $query->where('rating_category', $categoryEnum->value);
+            }
+        }
+
+        // Validate and apply sorting
+        $allowedSortFields = ['rating', 'wins', 'tournaments_won', 'total_matches'];
+        if (!in_array($sortBy, $allowedSortFields)) {
+            $sortBy = 'rating';
+        }
+
+        $query->orderByDesc($sortBy);
+
+        // Secondary sort for consistency
+        if ($sortBy === 'rating') {
+            $query->orderByDesc('total_matches');
+        } else {
+            $query->orderByDesc('rating');
+        }
+
+        // Add ID as final tiebreaker for consistent ordering
+        $query->orderBy('id');
+
+        return $query->paginate($perPage);
     }
 }

@@ -7,15 +7,19 @@ use App\DTOs\TournamentFiltersDTO;
 use App\DTOs\UpdateTournamentDTO;
 use App\Enums\ParticipantStatus;
 use App\Enums\TournamentStatus;
+use App\Enums\TournamentType;
 use App\Events\ParticipantRegistered;
 use App\Events\ParticipantWithdrawn;
 use App\Events\TournamentCancelled;
 use App\Events\TournamentCreated;
 use App\Events\TournamentStarted;
+use App\Models\GeographicUnit;
 use App\Models\PlayerProfile;
 use App\Models\Tournament;
+use App\Models\TournamentLevelSetting;
 use App\Models\TournamentParticipant;
 use App\Models\User;
+use App\Services\Bracket\BracketService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -23,15 +27,39 @@ use Illuminate\Support\Facades\DB;
 
 class TournamentService
 {
+    public function __construct(
+        protected BracketService $bracketService
+    ) {}
     /**
      * Create a new tournament.
      */
     public function create(CreateTournamentDTO $dto, User $creator): Tournament
     {
         return DB::transaction(function () use ($dto, $creator) {
+            $data = $dto->toArray();
+
+            // For Special tournaments, apply default race_to settings from admin config
+            // if organizer hasn't specified their own values
+            if ($dto->type === TournamentType::SPECIAL) {
+                $geographicUnit = GeographicUnit::find($dto->geographicScopeId);
+                if ($geographicUnit) {
+                    $level = $geographicUnit->getLevelEnum();
+
+                    // Only override if using default values (race_to = 3)
+                    if ($dto->raceTo === 3) {
+                        $data['race_to'] = TournamentLevelSetting::getDefaultRaceTo($level);
+                    }
+
+                    // Set finals_race_to from admin config if not specified
+                    if ($dto->finalsRaceTo === null) {
+                        $data['finals_race_to'] = TournamentLevelSetting::getDefaultFinalsRaceTo($level);
+                    }
+                }
+            }
+
             $tournament = Tournament::create([
-                ...$dto->toArray(),
-                'status' => TournamentStatus::DRAFT,
+                ...$data,
+                'status' => TournamentStatus::PENDING_REVIEW,
                 'created_by' => $creator->id,
             ]);
 
@@ -105,7 +133,8 @@ class TournamentService
 
     /**
      * Start a tournament (after registration closes).
-     * Note: Bracket generation will be handled by BracketGeneratorService.
+     * Generates the bracket and activates participants.
+     * Can only be called on or after the scheduled start date.
      */
     public function start(Tournament $tournament): Tournament
     {
@@ -117,20 +146,39 @@ class TournamentService
             throw new \InvalidArgumentException('Need at least 2 participants to start.');
         }
 
-        return DB::transaction(function () use ($tournament) {
-            // Activate all registered participants
-            $tournament->participants()
-                ->where('status', ParticipantStatus::REGISTERED)
-                ->update(['status' => ParticipantStatus::ACTIVE]);
+        // Validate that we're on or after the scheduled start date
+        if ($tournament->starts_at && now()->toDateString() < $tournament->starts_at->toDateString()) {
+            throw new \InvalidArgumentException(
+                'Cannot start before the scheduled date (' . $tournament->starts_at->toDateString() . ').'
+            );
+        }
 
+        return DB::transaction(function () use ($tournament) {
+            // Generate the bracket using the new fair-match bracket service
+            $result = $this->bracketService->generate($tournament);
+
+            // Activate all participants
+            $tournament->participants()->update([
+                'status' => ParticipantStatus::ACTIVE,
+            ]);
+
+            // Update tournament
             $tournament->status = TournamentStatus::ACTIVE;
-            $tournament->starts_at = now();
+            $tournament->matches_count = $result->matchesCreated;
             $tournament->save();
 
             event(new TournamentStarted($tournament));
 
-            return $tournament;
+            return $tournament->fresh(['participants', 'matches']);
         });
+    }
+
+    /**
+     * Get bracket visualization data.
+     */
+    public function getBracket(Tournament $tournament): array
+    {
+        return $this->bracketService->getBracketData($tournament);
     }
 
     /**
@@ -160,18 +208,22 @@ class TournamentService
             throw new \InvalidArgumentException('Can only complete active tournaments.');
         }
 
-        // Check if all matches are completed
-        $pendingMatches = $tournament->matches()
-            ->whereNotIn('status', ['completed', 'cancelled', 'expired'])
-            ->count();
-
-        if ($pendingMatches > 0) {
+        // Check if bracket is complete
+        if (!$this->bracketService->isBracketComplete($tournament)) {
+            $pendingMatches = $tournament->matches()
+                ->whereNotIn('status', ['completed', 'cancelled', 'expired'])
+                ->count();
             throw new \InvalidArgumentException("Cannot complete: {$pendingMatches} matches still pending.");
         }
 
-        $tournament->complete();
+        return DB::transaction(function () use ($tournament) {
+            // Calculate and assign final positions
+            $this->bracketService->calculateFinalPositions($tournament);
 
-        return $tournament;
+            $tournament->complete();
+
+            return $tournament;
+        });
     }
 
     /**
@@ -262,6 +314,7 @@ class TournamentService
 
     /**
      * Get tournaments for a specific player (eligible tournaments).
+     * Includes: Open tournaments (null scope) + tournaments matching player's geographic scope
      */
     public function getEligibleForPlayer(PlayerProfile $player, TournamentFiltersDTO $filters): LengthAwarePaginator
     {
@@ -269,7 +322,12 @@ class TournamentService
 
         $query = Tournament::query()
             ->with(['geographicScope', 'createdBy.organizerProfile'])
-            ->whereIn('geographic_scope_id', $playerUnitIds);
+            ->where(function ($q) use ($playerUnitIds) {
+                // Open tournaments (no geographic restriction)
+                $q->whereNull('geographic_scope_id')
+                    // OR tournaments matching player's geographic scope
+                    ->orWhereIn('geographic_scope_id', $playerUnitIds);
+            });
 
         // Default to registration open
         if (!$filters->status) {
@@ -285,15 +343,68 @@ class TournamentService
 
     /**
      * Get tournaments created by an organizer.
+     * Shows ALL statuses (including pending_review, draft) so organizers can manage their tournaments.
      */
     public function getByOrganizer(User $organizer, TournamentFiltersDTO $filters): LengthAwarePaginator
     {
-        $filters = new TournamentFiltersDTO(
-            ...(array) $filters,
-            createdBy: $organizer->id,
-        );
+        $query = Tournament::query()
+            ->with(['geographicScope', 'createdBy.organizerProfile'])
+            ->where('created_by', $organizer->id);
 
-        return $this->getFiltered($filters);
+        // Apply type filter if specified
+        if ($filters->type) {
+            $query->where('type', $filters->type);
+        }
+
+        // Apply status filter if specified, otherwise show ALL statuses for organizer
+        if ($filters->status) {
+            $query->where('status', $filters->status);
+        }
+
+        // Apply format filter if specified
+        if ($filters->format) {
+            $query->where('format', $filters->format);
+        }
+
+        // Apply search filter if specified
+        if ($filters->search) {
+            $query->where(function ($q) use ($filters) {
+                $q->where('name', 'ILIKE', "%{$filters->search}%")
+                    ->orWhere('description', 'ILIKE', "%{$filters->search}%");
+            });
+        }
+
+        return $query
+            ->orderBy($filters->sortBy, $filters->sortDirection)
+            ->paginate($filters->perPage, ['*'], 'page', $filters->page);
+    }
+
+    /**
+     * Get tournaments a player has registered for.
+     */
+    public function getRegisteredByPlayer(PlayerProfile $player, TournamentFiltersDTO $filters): LengthAwarePaginator
+    {
+        $query = Tournament::query()
+            ->with(['geographicScope', 'createdBy.organizerProfile'])
+            ->whereHas('participants', function ($q) use ($player) {
+                $q->where('player_profile_id', $player->id);
+            });
+
+        // Don't apply default status filter for my-registered - show all statuses
+        if ($filters->type) {
+            $query->where('type', $filters->type);
+        }
+
+        if ($filters->search) {
+            $query->where(function ($q) use ($filters) {
+                $q->where('name', 'ILIKE', "%{$filters->search}%")
+                    ->orWhere('description', 'ILIKE', "%{$filters->search}%");
+            });
+        }
+
+        return $query
+            ->orderBy('created_at', 'desc')
+            ->paginate($filters->perPage, ['*'], 'page', $filters->page);
     }
 
     /**
@@ -329,6 +440,13 @@ class TournamentService
 
         if ($filters->status) {
             $query->where('status', $filters->status);
+        } else {
+            // By default, only show publicly visible tournaments
+            $query->whereIn('status', [
+                TournamentStatus::REGISTRATION,
+                TournamentStatus::ACTIVE,
+                TournamentStatus::COMPLETED,
+            ]);
         }
 
         if ($filters->format) {
@@ -389,10 +507,16 @@ class TournamentService
             $issues[] = 'Registration is still open.';
         }
 
+        // Check if current date is on or after the scheduled start date
+        if ($tournament->starts_at && now()->toDateString() < $tournament->starts_at->toDateString()) {
+            $issues[] = 'Cannot start before the scheduled date (' . $tournament->starts_at->toDateString() . ').';
+        }
+
         return [
             'can_start' => empty($issues),
             'issues' => $issues,
             'participants_count' => $tournament->participants_count,
+            'scheduled_start_date' => $tournament->starts_at?->toDateString(),
         ];
     }
 }

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -60,6 +61,54 @@ class User extends Authenticatable implements OAuthenticatable
     public function organizerProfile(): HasOne
     {
         return $this->hasOne(OrganizerProfile::class);
+    }
+
+    public function subscriptions(): HasMany
+    {
+        return $this->hasMany(Subscription::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class);
+    }
+
+    public function notes(): HasMany
+    {
+        return $this->hasMany(UserNote::class)->orderBy('created_at', 'desc');
+    }
+
+    public function pinnedNotes(): HasMany
+    {
+        return $this->notes()->where('is_pinned', true);
+    }
+
+    public function activityLogs(): HasMany
+    {
+        return $this->hasMany(ActivityLog::class)->orderBy('created_at', 'desc');
+    }
+
+    public function inAppNotifications(): HasMany
+    {
+        return $this->hasMany(Notification::class)->orderBy('created_at', 'desc');
+    }
+
+    public function unreadNotifications(): HasMany
+    {
+        return $this->inAppNotifications()->whereNull('read_at');
+    }
+
+    public function activeSubscription(): ?Subscription
+    {
+        return $this->subscriptions()
+            ->active()
+            ->with('plan')
+            ->first();
+    }
+
+    public function hasActiveSubscription(): bool
+    {
+        return $this->activeSubscription() !== null;
     }
 
     // Role Checks
@@ -161,12 +210,18 @@ class User extends Authenticatable implements OAuthenticatable
             return false;
         }
 
-        if ($this->is_organizer) {
-            $profile = $this->organizerProfile;
-            return $profile && $profile->canCreateTournaments();
+        if (!$this->is_organizer) {
+            return false;
         }
 
-        return false;
+        // Must have active subscription
+        $subscription = $this->activeSubscription();
+        if (!$subscription) {
+            return false;
+        }
+
+        // Must have remaining tournaments in plan
+        return $subscription->canHostMoreTournaments();
     }
 
     public function canCreateSpecialTournament(): bool

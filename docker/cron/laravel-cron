@@ -1,0 +1,4 @@
+# CueSports Africa - Laravel Scheduler Cron
+# Run Laravel scheduler every minute
+
+* * * * * www-data cd /app && php artisan schedule:run >> /var/log/cron/laravel-scheduler.log 2>&1

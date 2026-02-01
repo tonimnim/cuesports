@@ -26,6 +26,14 @@ class TournamentParticipantResource extends JsonResource
                     'name' => $this->playerProfile->geographicUnit->name,
                     'full_path' => $this->playerProfile->geographicUnit->getFullPath(),
                 ] : null,
+                'stats' => [
+                    'total_matches' => $this->playerProfile->total_matches,
+                    'wins' => $this->playerProfile->wins,
+                    'losses' => $this->playerProfile->losses,
+                    'win_rate' => $this->playerProfile->total_matches > 0
+                        ? round(($this->playerProfile->wins / $this->playerProfile->total_matches) * 100)
+                        : 0,
+                ],
             ]),
             'status' => [
                 'value' => $this->status->value,
