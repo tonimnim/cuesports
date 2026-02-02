@@ -96,7 +96,8 @@ RUN docker-php-ext-configure gd \
         zip \
         sockets \
     && pecl install redis \
-    && docker-php-ext-enable redis
+    && docker-php-ext-enable redis \
+    && echo "extension=redis.so" > /usr/local/etc/php/conf.d/docker-php-ext-redis.ini
 
 # -----------------------------------------------------------------------------
 # Configure PHP for Production
@@ -165,7 +166,7 @@ RUN chown -R www-data:www-data /app \
 # -----------------------------------------------------------------------------
 # Health Check
 # -----------------------------------------------------------------------------
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=5 \
     CMD curl -f http://localhost:${PORT}/api/health || exit 1
 
 # -----------------------------------------------------------------------------
