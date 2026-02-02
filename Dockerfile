@@ -9,6 +9,27 @@
 #   PORT: HTTP port (default: 8000)
 # =============================================================================
 
+# -----------------------------------------------------------------------------
+# Stage 1: Build Frontend Assets
+# -----------------------------------------------------------------------------
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /app
+
+# Copy package files and install ALL dependencies (including dev)
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# Copy files needed for Vite build
+COPY vite.config.js tsconfig.json ./
+COPY resources ./resources
+
+# Build frontend assets
+RUN npm run build
+
+# -----------------------------------------------------------------------------
+# Stage 2: Production Image
+# -----------------------------------------------------------------------------
 FROM dunglas/frankenphp:latest-php8.3
 
 LABEL maintainer="CueSports Africa"
@@ -48,9 +69,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxpm-dev \
     # Process management
     supervisor \
-    # Node.js for asset compilation
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs \
     # Clean up
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
@@ -115,22 +133,20 @@ RUN composer install \
     --no-interaction
 
 # -----------------------------------------------------------------------------
-# Install Node Dependencies (cached layer)
-# -----------------------------------------------------------------------------
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
-
-# -----------------------------------------------------------------------------
 # Copy Application Code
 # -----------------------------------------------------------------------------
 COPY . .
 
 # -----------------------------------------------------------------------------
+# Copy Built Frontend Assets from Builder Stage
+# -----------------------------------------------------------------------------
+COPY --from=frontend-builder /app/public/build /app/public/build
+
+# -----------------------------------------------------------------------------
 # Build Application
 # -----------------------------------------------------------------------------
 RUN composer dump-autoload --optimize --no-dev \
-    && php artisan package:discover --ansi \
-    && npm run build
+    && php artisan package:discover --ansi
 
 # -----------------------------------------------------------------------------
 # Setup Supervisor
