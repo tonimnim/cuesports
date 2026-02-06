@@ -17,6 +17,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Trust Railway's proxy for HTTPS
+        $middleware->trustProxies(at: '*');
+
         // Enable CORS and security headers for API routes
         $middleware->api(prepend: [
             HandleCors::class,

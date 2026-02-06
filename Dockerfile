@@ -30,7 +30,7 @@ RUN npm run build
 # -----------------------------------------------------------------------------
 # Stage 2: Production Image
 # -----------------------------------------------------------------------------
-FROM dunglas/frankenphp:latest-php8.3
+FROM dunglas/frankenphp:1.9-php8.3
 
 LABEL maintainer="CueSports Africa"
 LABEL description="Production-ready Laravel Octane with FrankenPHP"
@@ -161,7 +161,8 @@ RUN mkdir -p /var/log/supervisor /var/run \
 RUN chown -R www-data:www-data /app \
     && chmod -R 755 /app/storage \
     && chmod -R 755 /app/bootstrap/cache \
-    && chmod +x /app/docker/start.sh
+    && chmod +x /app/docker/start.sh \
+    && chown www-data:www-data /usr/local/bin/frankenphp
 
 # -----------------------------------------------------------------------------
 # Health Check

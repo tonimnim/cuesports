@@ -262,6 +262,24 @@ services:
             timeout: 20s
             retries: 3
 
+    # ============================================
+    # ngrok Tunnel (Remote API Access)
+    # ============================================
+    ngrok:
+        image: ngrok/ngrok:latest
+        container_name: cuesports-ngrok
+        restart: unless-stopped
+        command: http api:8000 --log stdout
+        environment:
+            - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+        ports:
+            - "4040:4040"
+        networks:
+            - cuesports
+        depends_on:
+            api:
+                condition: service_healthy
+
 networks:
     cuesports:
         driver: bridge

@@ -32,3 +32,4 @@ frankenphp-worker.php
 
 # Frontend has its own git repo
 /frontend
+.env.docker
